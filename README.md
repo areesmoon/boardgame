@@ -1,36 +1,100 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🎲 Educational Board Game Engine
 
-## Getting Started
+A real-time, interactive, and customizable digital board game engine built for interactive classroom learning. Designed to support any educational subject (General/Multi-subject) with dynamic question card management and turn-based online gameplay.
 
-First, run the development server:
+---
+
+## 🌟 Key Features
+
+* **Multi-Subject CMS (Dashboard Guru):** Teachers can create, edit, and manage custom game templates and card decks (Questions, Challenges, Bonuses, Penalties).
+* **Real-time Gameplay:** Instant turn-based game updates powered by Firebase Firestore listeners (`onSnapshot`).
+* **Ethical & Inclusive Design:** Replaces traditional dice with an interactive **Spin Wheel / Step Generator** to keep gameplay engaging and free from dice-related controversy.
+* **Seamless Authentication:** Simple Google Sign-In for teachers and quick 6-digit PIN room access for students (no registration required for players).
+* **Responsive Board UI:** Built with Tailwind CSS for smooth cross-device accessibility (Mobile, Tablet, and Desktop).
+
+---
+
+## 🛠️ Tech Stack
+
+* **Framework:** Next.js (App Router)
+* **Styling:** Tailwind CSS + Lucide Icons
+* **Database & Auth:** Firebase (Firestore & Google Auth)
+* **Effects:** Canvas Confetti
+
+---
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+
+Make sure you have Node.js (v18 or higher) installed on your system.
+
+### 2. Installation
+
+Clone the repository and install dependencies:
+
+```bash
+git clone [https://github.com/your-username/boardgame.git](https://github.com/your-username/boardgame.git)
+cd boardgame
+npm install
+
+```
+
+### 3. Environment Setup
+
+Create a `.env.local` file in the root directory and add your Firebase configurations:
+
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project_id.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project_id.appspot.com
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_messaging_sender_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+
+```
+
+### 4. Running the Development Server
+
+Start the local development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 📁 Project Structure
 
-## Learn More
+```text
+boardgame/
+├── app/
+│   ├── layout.js              # Root Layout & Auth Provider
+│   ├── page.js                 # Landing Page / Join Room Form
+│   ├── login/
+│   │   └── page.js             # Teacher Login (Google Auth)
+│   ├── dashboard/
+│   │   ├── page.js             # Teacher Dashboard (Template & Room List)
+│   │   └── template/
+│   │       └── [id]/page.js    # Card Deck CRUD Editor
+│   └── play/[roomId]/
+│       └── page.js             # Real-time Board Game Arena
+├── components/
+│   ├── SpinWheel.jsx           # Interactive Step Generator
+│   ├── BoardGrid.jsx           # Dynamic Board Game Canvas/Grid
+│   └── CardModal.jsx           # Pop-up Modal for Active Cards
+├── context/
+│   └── AuthContext.js          # Firebase Authentication State
+└── lib/
+    └── firebase.js             # Firebase Client Configuration
 
-To learn more about Next.js, take a look at the following resources:
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+---
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 📄 License
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+This project is open-source and available under the [MIT License](https://www.google.com/search?q=LICENSE). Developed by Sensoft Network.
