@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { HelpCircle, Flame, Gift, AlertTriangle, CheckCircle, XCircle, PackageOpen, Award } from "lucide-react";
+import { HelpCircle, Flame, Gift, AlertTriangle, CheckCircle, XCircle, PackageOpen, ShieldAlert } from "lucide-react";
 
 interface CardData {
   id?: string;
@@ -183,28 +183,15 @@ export default function CardModal({
 
           {/* Tombol Eksekusi Berdasarkan Tipe Kartu */}
           <div className="pt-2 border-t border-slate-800">
-            {/* KARTU TANTANGAN: PENILAIAN GURU / PEMAIN */}
+            {/* KARTU TANTANGAN: TIM MEMBACA INSTRUKSI, PENILAIAN DIAMBIL ALIH GURU DARI CONTROL PANEL */}
             {card.type === "challenge" ? (
-              <div className="space-y-2">
-                <p className="text-[11px] text-center text-slate-400 font-medium">
-                  Apakah pemain berhasil menyelesaikan tantangan?
+              <div className="p-3.5 bg-slate-800/60 rounded-xl border border-slate-700/80 text-center space-y-1">
+                <p className="text-xs text-amber-300 font-bold flex items-center justify-center gap-1.5">
+                  <ShieldAlert className="w-4 h-4 text-amber-400" /> Lakukan Tantangan Sekarang!
                 </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    onClick={() => handleChallengeVerdict(false)}
-                    disabled={!isCurrentPlayer && !isHost}
-                    className="py-3 bg-red-600/20 hover:bg-red-600 border border-red-500/50 text-red-200 font-bold text-xs rounded-xl transition-all disabled:opacity-40"
-                  >
-                    Gagal (0 Pts)
-                  </button>
-                  <button
-                    onClick={() => handleChallengeVerdict(true)}
-                    disabled={!isCurrentPlayer && !isHost}
-                    className="py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition-all disabled:opacity-40 shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5"
-                  >
-                    <Award className="w-4 h-4" /> Berhasil (+100 Pts)
-                  </button>
-                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Performakan aksi/hafalanmu di depan kelas. Guru akan memberikan penilaian dari Control Panel Host.
+                </p>
               </div>
             ) : card.type === "question" ? (
               isAnswered && (

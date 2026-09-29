@@ -14,7 +14,7 @@ import {
 } from "firebase/firestore";
 import SpinWheel from "@/components/SpinWheel";
 import CardModal from "@/components/CardModal";
-import { Trophy, Gift, Flame, AlertTriangle, HelpCircle, Shield, SkipForward, RotateCcw } from "lucide-react";
+import { Trophy, Gift, Flame, AlertTriangle, HelpCircle, Shield, SkipForward, RotateCcw, Check, X } from "lucide-react";
 
 interface Player {
   id: string;
@@ -32,6 +32,7 @@ interface RoomData {
   status: string;
   currentTurn: number;
   players: Player[];
+  activeCardType?: string | null;
 }
 
 interface CardData {
@@ -98,6 +99,11 @@ export default function PlayRoomPage() {
         const docSnap = snapshot.docs[0];
         const docData = docSnap.data() as Omit<RoomData, "id">;
         setRoomData({ id: docSnap.id, ...docData });
+
+        // Jika Guru mereset activeCardType (setelah memberi nilai), otomatis tutup modal tim
+        if (docData.activeCardType === null) {
+          setActiveCard(null);
+        }
       }
     });
 
@@ -177,12 +183,20 @@ export default function PlayRoomPage() {
       const landedTileType = getTileType(newPosition);
       const matchingCards = templateCards.filter((c) => c.type === landedTileType);
 
+      let chosenCard: CardData | null = null;
       if (matchingCards.length > 0) {
-        const randomCard = matchingCards[Math.floor(Math.random() * matchingCards.length)];
-        setActiveCard(randomCard);
+        chosenCard = matchingCards[Math.floor(Math.random() * matchingCards.length)];
       } else if (templateCards.length > 0) {
-        const randomCard = templateCards[Math.floor(Math.random() * templateCards.length)];
-        setActiveCard(randomCard);
+        chosenCard = templateCards[Math.floor(Math.random() * templateCards.length)];
+      }
+
+      if (chosenCard) {
+        setActiveCard(chosenCard);
+
+        // Update activeCardType ke Firestore agar Guru melihat indikator Tantangan
+        await updateDoc(doc(db, "rooms", roomData.id), {
+          activeCardType: chosenCard.type,
+        });
       } else {
         await passToNextTurn();
       }
@@ -190,7 +204,7 @@ export default function PlayRoomPage() {
     }, 800);
   };
 
-  // 5. Handler Eksekusi Jawaban/Aksi dari CardModal
+  // 5. Handler Eksekusi Jawaban/Aksi dari CardModal (Dijalankan Tim)
   const handleAnswerSubmit = async ({
     isCorrect,
     value,
@@ -209,8 +223,6 @@ export default function PlayRoomPage() {
     if (player) {
       if (type === "question" && isCorrect) {
         player.score += 100;
-      } else if (type === "challenge" && isCorrect) {
-        player.score += 100;
       } else if (type === "bonus") {
         player.score += (value * 10) || 50;
       } else if (type === "penalty") {
@@ -223,9 +235,31 @@ export default function PlayRoomPage() {
     await updateDoc(doc(db, "rooms", roomData.id), {
       players: updatedPlayers,
       currentTurn: nextTurn,
+      activeCardType: null,
     });
 
     setActiveCard(null);
+  };
+
+  // KONTROL GURU: Penilaian Tantangan (Diakses dari Control Panel Host)
+  const handleHostJudgeChallenge = async (passed: boolean) => {
+    if (!roomData || roomData.players.length === 0) return;
+
+    const updatedPlayers = [...roomData.players];
+    const currentPlayer = updatedPlayers[roomData.currentTurn];
+
+    if (currentPlayer && passed) {
+      currentPlayer.score += 100; // Tambahkan +100 poin jika Guru menyatakan BERHASIL
+    }
+
+    const nextTurn = (roomData.currentTurn + 1) % roomData.players.length;
+
+    // Reset activeCardType ke null -> Popup di HP tim otomatis tertutup
+    await updateDoc(doc(db, "rooms", roomData.id), {
+      players: updatedPlayers,
+      currentTurn: nextTurn,
+      activeCardType: null,
+    });
   };
 
   // KONTROL HOST: Oper Giliran Paksa (Skip Turn)
@@ -234,6 +268,7 @@ export default function PlayRoomPage() {
     const nextTurn = (roomData.currentTurn + 1) % roomData.players.length;
     await updateDoc(doc(db, "rooms", roomData.id), {
       currentTurn: nextTurn,
+      activeCardType: null,
     });
   };
 
@@ -244,6 +279,7 @@ export default function PlayRoomPage() {
     await updateDoc(doc(db, "rooms", roomData.id), {
       players: resetPlayers,
       currentTurn: 0,
+      activeCardType: null,
     });
   };
 
@@ -295,7 +331,7 @@ export default function PlayRoomPage() {
 
   // --- SCREEN 2: ARENA BOARD GAME REALTIME ---
   return (
-    <div className="min-h-screen bg-slate-950 text-white p-4 md:p-6 flex flex-col gap-6 max-w-6xl mx-auto pb-24">
+    <div className="min-h-screen bg-slate-950 text-white p-4 md:p-6 flex flex-col gap-6 max-w-6xl mx-auto pb-28">
       {/* Game Navbar Status */}
       <header className="flex justify-between items-center bg-slate-900 p-4 rounded-2xl border border-slate-800 shadow-sm">
         <div className="flex items-center gap-3">
@@ -408,22 +444,47 @@ export default function PlayRoomPage() {
 
       {/* FLOATING HOST CONTROL BAR (KHUSUS GURU) */}
       {isHost && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/90 backdrop-blur-md border border-amber-500/40 px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-4 z-40">
-          <div className="flex items-center gap-2 text-amber-400 text-xs font-bold border-r border-slate-800 pr-4">
-            <Shield className="w-4 h-4" /> Control Panel Host
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/95 backdrop-blur-md border border-amber-500/40 px-6 py-3.5 rounded-2xl shadow-2xl flex flex-col sm:flex-row items-center gap-4 z-40">
+          
+          {/* JIKA KARTU TANTANGAN SEDANG AKTIF: TAMPILKAN TOMBOL PENILAIAN TANTANGAN KHUSUS GURU */}
+          {roomData.activeCardType === "challenge" ? (
+            <div className="flex items-center gap-2.5 bg-amber-950/70 p-2 rounded-xl border border-amber-500/50">
+              <span className="text-xs font-bold text-amber-300 flex items-center gap-1 px-2">
+                <Flame className="w-4 h-4 text-orange-400 animate-pulse" /> Penilaian Tantangan ({roomData.players[roomData.currentTurn]?.name || "Kelompok"}):
+              </span>
+              <button
+                onClick={() => handleHostJudgeChallenge(false)}
+                className="flex items-center gap-1 text-xs font-bold bg-red-600/90 hover:bg-red-600 text-white px-3 py-1.5 rounded-lg transition-all shadow-md"
+              >
+                <X className="w-3.5 h-3.5" /> Gagal (0 Pts)
+              </button>
+              <button
+                onClick={() => handleHostJudgeChallenge(true)}
+                className="flex items-center gap-1 text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg transition-all shadow-md"
+              >
+                <Check className="w-3.5 h-3.5" /> Berhasil (+100 Pts)
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-amber-400 text-xs font-bold border-r border-slate-800 pr-4">
+              <Shield className="w-4 h-4" /> Control Panel Host
+            </div>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={passToNextTurn}
+              className="flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-xl border border-slate-700 transition-all"
+            >
+              <SkipForward className="w-3.5 h-3.5 text-indigo-400" /> Skip Giliran
+            </button>
+            <button
+              onClick={handleResetGame}
+              className="flex items-center gap-1.5 text-xs font-bold text-red-300 bg-red-950/50 hover:bg-red-900/80 px-3 py-2 rounded-xl border border-red-800/60 transition-all"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Reset Game
+            </button>
           </div>
-          <button
-            onClick={passToNextTurn}
-            className="flex items-center gap-1.5 text-xs font-bold text-slate-200 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-xl border border-slate-700 transition-all"
-          >
-            <SkipForward className="w-3.5 h-3.5 text-indigo-400" /> Skip Giliran
-          </button>
-          <button
-            onClick={handleResetGame}
-            className="flex items-center gap-1.5 text-xs font-bold text-red-300 bg-red-950/50 hover:bg-red-900/80 px-3 py-2 rounded-xl border border-red-800/60 transition-all"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset Game
-          </button>
         </div>
       )}
 
