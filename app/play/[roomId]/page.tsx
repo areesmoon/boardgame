@@ -1,3 +1,4 @@
+// File: app/play/[roomId]/page.tsx
 "use client";
 import { useEffect, useState, FormEvent } from "react";
 import { useParams } from "next/navigation";
@@ -11,6 +12,7 @@ import {
   doc,
   updateDoc,
   getDocs,
+  getDoc,
 } from "firebase/firestore";
 import SpinWheel from "@/components/SpinWheel";
 import CardModal from "@/components/CardModal";
@@ -81,9 +83,11 @@ export default function PlayRoomPage() {
   const [isJoined, setIsJoined] = useState<boolean>(false);
   const [myPlayerIndex, setMyPlayerIndex] = useState<number | null>(null);
 
-  // State Card & Status Animasi
+  // State Card, Timers & Status Animasi
   const [activeCard, setActiveCard] = useState<CardData | null>(null);
   const [templateCards, setTemplateCards] = useState<CardData[]>([]);
+  const [questionTimer, setQuestionTimer] = useState<number>(60);
+  const [penaltyTimer, setPenaltyTimer] = useState<number>(30);
   const [isMoving, setIsMoving] = useState<boolean>(false);
 
   // Cek apakah user saat ini adalah Pembuat Room (Guru)
@@ -100,7 +104,6 @@ export default function PlayRoomPage() {
         const docData = docSnap.data() as Omit<RoomData, "id">;
         setRoomData({ id: docSnap.id, ...docData });
 
-        // Jika Guru mereset activeCardType (setelah memberi nilai), otomatis tutup modal tim
         if (docData.activeCardType === null) {
           setActiveCard(null);
         }
@@ -117,11 +120,37 @@ export default function PlayRoomPage() {
     }
   }, [isHost, isJoined]);
 
-  // 2. Fetch Bank Soal/Kartu berdasarkan Template ID Room
+  // RESTORE PETA PERSISTENSI LOCALSTORAGE
+  useEffect(() => {
+    if (!roomData || isHost || isJoined) return;
+
+    const storedName = localStorage.getItem(`boardgame_player_name_${roomCode}`);
+    if (storedName && roomData.players) {
+      const existingIdx = roomData.players.findIndex(
+        (p) => p.name.trim().toLowerCase() === storedName.trim().toLowerCase()
+      );
+      if (existingIdx !== -1) {
+        setPlayerName(storedName);
+        setMyPlayerIndex(existingIdx);
+        setIsJoined(true);
+      }
+    }
+  }, [roomData, isHost, isJoined, roomCode]);
+
+  // 2. Fetch Bank Soal & Durasi Timer berdasarkan Template ID Room
   useEffect(() => {
     if (roomData?.templateId) {
-      const fetchCards = async () => {
+      const fetchTemplateAndCards = async () => {
         try {
+          // Fetch Template Info (Durasi Timer)
+          const tplSnap = await getDoc(doc(db, "templates", roomData.templateId));
+          if (tplSnap.exists()) {
+            const tplData = tplSnap.data();
+            setQuestionTimer(tplData.questionTimer || 60);
+            setPenaltyTimer(tplData.penaltyTimer || 30);
+          }
+
+          // Fetch Cards
           const q = query(
             collection(db, "cards"),
             where("templateId", "==", roomData.templateId)
@@ -130,10 +159,10 @@ export default function PlayRoomPage() {
           const cardsList = snap.docs.map((d) => ({ id: d.id, ...d.data() } as CardData));
           setTemplateCards(cardsList);
         } catch (err: unknown) {
-          console.error("Gagal mengambil bank soal:", err);
+          console.error("Gagal mengambil data template dan bank soal:", err);
         }
       };
-      fetchCards();
+      fetchTemplateAndCards();
     }
   }, [roomData?.templateId]);
 
@@ -143,11 +172,23 @@ export default function PlayRoomPage() {
     if (!playerName.trim() || !roomData) return;
 
     const currentPlayers = roomData.players || [];
+    
+    const existingIdx = currentPlayers.findIndex(
+      (p) => p.name.trim().toLowerCase() === playerName.trim().toLowerCase()
+    );
+
+    if (existingIdx !== -1) {
+      setMyPlayerIndex(existingIdx);
+      localStorage.setItem(`boardgame_player_name_${roomCode}`, playerName.trim());
+      setIsJoined(true);
+      return;
+    }
+
     const colors = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"];
     
     const newPlayer: Player = {
       id: Date.now().toString(),
-      name: playerName,
+      name: playerName.trim(),
       position: 0,
       score: 0,
       color: colors[currentPlayers.length % colors.length],
@@ -158,6 +199,8 @@ export default function PlayRoomPage() {
     await updateDoc(doc(db, "rooms", roomData.id), {
       players: updatedPlayers,
     });
+
+    localStorage.setItem(`boardgame_player_name_${roomCode}`, playerName.trim());
 
     setMyPlayerIndex(currentPlayers.length);
     setIsJoined(true);
@@ -193,7 +236,6 @@ export default function PlayRoomPage() {
       if (chosenCard) {
         setActiveCard(chosenCard);
 
-        // Update activeCardType ke Firestore agar Guru melihat indikator Tantangan
         await updateDoc(doc(db, "rooms", roomData.id), {
           activeCardType: chosenCard.type,
         });
@@ -209,10 +251,12 @@ export default function PlayRoomPage() {
     isCorrect,
     value,
     type,
+    skippedRisk,
   }: {
     isCorrect: boolean;
     value: number;
     type: string;
+    skippedRisk?: boolean;
   }) => {
     if (!roomData) return;
 
@@ -226,7 +270,15 @@ export default function PlayRoomPage() {
       } else if (type === "bonus") {
         player.score += (value * 10) || 50;
       } else if (type === "penalty") {
-        player.position = Math.max(0, player.position - (value || 1));
+        if (skippedRisk) {
+          // Pemain memilih "Cari Aman" (Lewati): Tidak ada perubahan skor & posisi aman
+        } else if (isCorrect) {
+          // Pemain mengambil risiko & Jawab BENAR: Dapatkan Bonus +200 Poin!
+          player.score += 200;
+        } else {
+          // Pemain mengambil risiko & Jawab SALAH / TIMEOUT: Dikenakan Konsekuensi Mundur
+          player.position = Math.max(0, player.position - (value || 1));
+        }
       }
     }
 
@@ -249,12 +301,11 @@ export default function PlayRoomPage() {
     const currentPlayer = updatedPlayers[roomData.currentTurn];
 
     if (currentPlayer && passed) {
-      currentPlayer.score += 100; // Tambahkan +100 poin jika Guru menyatakan BERHASIL
+      currentPlayer.score += 100;
     }
 
     const nextTurn = (roomData.currentTurn + 1) % roomData.players.length;
 
-    // Reset activeCardType ke null -> Popup di HP tim otomatis tertutup
     await updateDoc(doc(db, "rooms", roomData.id), {
       players: updatedPlayers,
       currentTurn: nextTurn,
@@ -494,6 +545,8 @@ export default function PlayRoomPage() {
           card={activeCard}
           isCurrentPlayer={isMyTurn}
           isHost={isHost}
+          questionTimer={questionTimer}
+          penaltyTimer={penaltyTimer}
           onClose={() => setActiveCard(null)}
           onAnswerSubmit={handleAnswerSubmit}
         />

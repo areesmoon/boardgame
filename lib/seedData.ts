@@ -1,13 +1,16 @@
+// File: lib/seedData.ts
 import { db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export const seedQuranHadisTemplate = async (userUid: string, userName: string) => {
   try {
-    // 1. Buat Template Utama
+    // 1. Buat Template Utama beserta Default Timer
     const templateRef = await addDoc(collection(db, "templates"), {
       title: "Al-Qur'an Hadis Class X - Bab Otentisitas Al-Qur'an & Hadis",
       authorId: userUid,
       authorName: userName,
+      questionTimer: 60, // Default 60 detik untuk petak biru
+      penaltyTimer: 30,  // Default 30 detik untuk petak merah
       createdAt: serverTimestamp(),
       cardsCount: 10,
     });
@@ -57,7 +60,7 @@ export const seedQuranHadisTemplate = async (userUid: string, userName: string) 
         content: "TANTANGAN: Bacalkan Q.S. Al-Hujurat ayat 13 beserta artinya dengan tartil di depan guru/kelompok!",
         options: [],
         correctAnswer: null,
-        value: 2, // Nilai keberhasilan
+        value: 2,
       },
       {
         templateId,
@@ -86,21 +89,31 @@ export const seedQuranHadisTemplate = async (userUid: string, userName: string) 
         value: 1,
       },
 
-      // --- KARTU KONSEKUENSI (Penalti Edukatif) ---
+      // --- KARTU KONSEKUENSI / ZONA RISIKO TINGGI (HIGH RISK, HIGH REWARD) ---
       {
         templateId,
         type: "penalty",
-        content: "KONSEKUENSI: Kurang konsentrasi saat mencatat penjelasan materi. Mundur 1 petak!",
-        options: [],
-        correctAnswer: null,
+        content: "[TANTANGAN HOTS RISIKO TINGGI]: Mengapa Hadis Mutawatir dikategorikan sebagai ilmu Qath'i (pasti benar)? Analisis alasannya!",
+        options: [
+          "Karena perawinya banyak di tiap tingkatan sanad dan mustahil sepakat berdusta",
+          "Karena ditulis langsung oleh Nabi Muhammad SAW secara pribadi",
+          "Karena hanya diriwayatkan oleh sahabat yang bergelar Khulafaur Rasyidin",
+          "Karena sanadnya tidak perlu diperiksa keilmuannya lagi"
+        ],
+        correctAnswer: "A",
         value: 1,
       },
       {
         templateId,
         type: "penalty",
-        content: "KONSEKUENSI: Terlambat menjawab pertanyaan giliran. Mundur 2 petak ke belakang!",
-        options: [],
-        correctAnswer: null,
+        content: "[TANTANGAN HOTS RISIKO TINGGI]: Apa konsekuensi ilmiah jika sebuah hadis memiliki cacat tersembunyi ('Illah) pada sanadnya?",
+        options: [
+          "Derajat hadis turun dari Shahih menjadi Dha'if / Munqathi'",
+          "Hadis tersebut otomatis naik menjadi Mutawatir",
+          "Hadis tersebut berubah status menjadi ayat Al-Qur'an",
+          "Hadis tetap dianggap Shahih mutlak tanpa catatan"
+        ],
+        correctAnswer: "A",
         value: 2,
       },
     ];
