@@ -1,0 +1,139 @@
+rules_version = '2';
+
+// =====================================================================
+// Firestore Security Rules — Board Game Edukasi
+//
+// Aktor:
+//   - Guru  : login Google (request.auth != null). Pemilik template & room.
+//   - Siswa : TIDAK login. Hanya tahu PIN room, bisa baca papan & kartu,
+//             dan mengubah state permainan (players / giliran / kartu aktif).
+//
+// Koleksi:
+//   templates/{id} : { title, authorId, authorName, questionTimer, penaltyTimer, cardsCount, createdAt }
+//   cards/{id}     : { templateId, type, content, options, correctAnswer, value, createdAt }
+//   rooms/{id}     : { code, templateId, hostId, status, currentTurn, players, activeCardType, createdAt }
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Helpers ----------
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function ownsTemplate(templateId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/templates/$(templateId))
+        && get(/databases/$(database)/documents/templates/$(templateId)).data.authorId == request.auth.uid;
+    }
+
+    function unchanged(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    function isTimer(v) {
+      return v is number && v > 0 && v <= 3600;
+    }
+
+    // ---------- templates ----------
+    match /templates/{templateId} {
+      // Siswa (tanpa login) perlu membaca timer template saat bermain.
+      allow get: if true;
+
+      // Dashboard hanya boleh list template miliknya sendiri
+      // (query wajib memakai where("authorId", "==", uid)).
+      allow list: if signedIn() && resource.data.authorId == request.auth.uid;
+
+      allow create: if isSelf(request.resource.data.authorId)
+        && validTemplate(request.resource.data);
+
+      allow update: if isSelf(resource.data.authorId)
+        && unchanged('authorId')
+        && validTemplate(request.resource.data);
+
+      allow delete: if isSelf(resource.data.authorId);
+
+      function validTemplate(d) {
+        return d.keys().hasAll(['title', 'authorId'])
+          && d.keys().hasOnly(['title', 'authorId', 'authorName', 'questionTimer',
+                               'penaltyTimer', 'cardsCount', 'createdAt'])
+          && d.title is string && d.title.size() > 0 && d.title.size() <= 300
+          && (!('questionTimer' in d) || isTimer(d.questionTimer))
+          && (!('penaltyTimer' in d) || isTimer(d.penaltyTimer))
+          && (!('cardsCount' in d) || (d.cardsCount is int && d.cardsCount >= 0));
+      }
+    }
+
+    // ---------- cards ----------
+    match /cards/{cardId} {
+      // Siswa perlu memuat kartu template saat bermain.
+      allow read: if true;
+
+      allow create: if ownsTemplate(request.resource.data.templateId)
+        && validCard(request.resource.data);
+
+      allow update: if ownsTemplate(resource.data.templateId)
+        && unchanged('templateId')
+        && validCard(request.resource.data);
+
+      allow delete: if ownsTemplate(resource.data.templateId);
+
+      function validCard(d) {
+        return d.keys().hasAll(['templateId', 'type', 'content'])
+          && d.keys().hasOnly(['templateId', 'type', 'content', 'options',
+                               'correctAnswer', 'value', 'createdAt'])
+          && d.type in ['question', 'penalty', 'challenge', 'bonus']
+          && d.content is string && d.content.size() > 0 && d.content.size() <= 5000
+          && (!('options' in d) || (d.options is list && d.options.size() <= 6))
+          && (!('value' in d) || d.value is number);
+      }
+    }
+
+    // ---------- rooms ----------
+    match /rooms/{roomId} {
+      // Siswa mencari room lewat where("code", "==", PIN) dan listen realtime.
+      allow read: if true;
+
+      allow create: if isSelf(request.resource.data.hostId)
+        && ownsTemplate(request.resource.data.templateId)
+        && validRoomCode(request.resource.data.code)
+        && request.resource.data.players == []
+        && request.resource.data.currentTurn == 0;
+
+      // Guru (host): boleh ubah apa saja kecuali pemilik & template.
+      // Siswa: hanya boleh mengubah state permainan, bukan PIN/status/host.
+      allow update: if validGameState(request.resource.data)
+        && unchanged('hostId')
+        && unchanged('templateId')
+        && (
+          isSelf(resource.data.hostId)
+          || request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['players', 'currentTurn', 'activeCardType'])
+        );
+
+      allow delete: if isSelf(resource.data.hostId);
+
+      function validRoomCode(code) {
+        return code is string && code.matches('^[0-9]{6}$');
+      }
+
+      function validGameState(d) {
+        return validRoomCode(d.code)
+          && d.players is list && d.players.size() <= 20
+          && d.currentTurn is int && d.currentTurn >= 0 && d.currentTurn <= 20
+          && (!('activeCardType' in d) || d.activeCardType == null
+              || d.activeCardType in ['question', 'penalty', 'challenge', 'bonus']);
+      }
+    }
+
+    // Semua path lain: tolak.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -275,6 +275,12 @@ export default function DashboardPage() {
     if (!confirm(`Apakah Anda yakin ingin menghapus template "${title}"?`)) return;
 
     try {
+      // Hapus kartu dulu: rules mengecek kepemilikan lewat dokumen template,
+      // jadi kartu harus dihapus selagi template masih ada.
+      const cardsSnap = await getDocs(
+        query(collection(db, "cards"), where("templateId", "==", templateId))
+      );
+      await Promise.all(cardsSnap.docs.map((d) => deleteDoc(d.ref)));
       await deleteDoc(doc(db, "templates", templateId));
       if (roomId) {
         await deleteDoc(doc(db, "rooms", roomId));
